@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Offline Tester</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Offline Test">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#14532d">
+<!--HEAD_LINKS-->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="styles.css">
+<!--/HEAD_LINKS-->
+</head>
+<body>
+<main>
+  <header>
+    <h1>Offline Tester</h1>
+    <p class="muted" id="version"></p>
+  </header>
+
+  <section id="verdict" class="verdict bad" aria-live="polite">
+    <strong id="verdict-title">Scripts are NOT running</strong>
+    <p id="verdict-next">This page opened, but the iPad is blocking its code. If this is the file copied to the iPad, that route won't work.</p>
+  </section>
+
+  <section>
+    <h2>1. Checks</h2>
+    <ul id="checks" class="checks"></ul>
+  </section>
+
+  <section>
+    <h2>2. Sound</h2>
+    <p class="muted">Tap each button, then say whether you heard it. Try again with the Bluetooth speaker.</p>
+    <div class="sound-tests">
+      <div class="sound-card">
+        <button id="sound-a" class="btn">Play sound A</button>
+        <p class="muted">Audio player</p>
+        <div class="heard" data-sound="a">
+          <button class="btn small" data-heard="yes">Heard it</button>
+          <button class="btn small ghost" data-heard="no">Silent</button>
+        </div>
+        <p id="sound-a-status" class="status"></p>
+      </div>
+      <div class="sound-card">
+        <button id="sound-b" class="btn">Play sound B</button>
+        <p class="muted">Web Audio</p>
+        <div class="heard" data-sound="b">
+          <button class="btn small" data-heard="yes">Heard it</button>
+          <button class="btn small ghost" data-heard="no">Silent</button>
+        </div>
+        <p id="sound-b-status" class="status"></p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Game flow</h2>
+    <p class="muted">The chime stands in for the greeting. Flags are test images only.</p>
+    <div class="round-bar">
+      <button id="round-start" class="btn">Start round</button>
+      <div class="scores">
+        <div><span class="muted">This round</span><b id="points">1000</b></div>
+        <div><span class="muted">Total</span><b id="total">0</b></div>
+      </div>
+    </div>
+    <p id="prompt" class="prompt" aria-live="polite">Tap Start round.</p>
+    <div id="flags" class="flags"></div>
+  </section>
+</main>
+<!--BODY_SCRIPT--><script src="app.js"></script><!--/BODY_SCRIPT-->
+</body>
+</html>
