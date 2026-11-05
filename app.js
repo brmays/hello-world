@@ -16,9 +16,17 @@
     set(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* storage blocked */ } },
   };
 
-  const settings = { autoRepeat: store.get('autoRepeat') !== 'off' };
-  const game = { phase: 'idle', total: 0, round: null, roundId: 0, bag: [], lastId: null, timers: [], frame: 0 };
+  const settings = { autoRepeat: store.get('autoRepeat') !== 'off', easy: store.get('mode') === 'easy' };
+  const game = { phase: 'idle', total: 0, round: null, roundId: 0, listenId: 0, bag: [], lastId: null, timers: [], frame: 0 };
   const tiles = {};
+
+  // Easy mode plays only the countries marked easy: true in countries.js.
+  function activeCountries() {
+    return settings.easy ? COUNTRIES.filter((country) => country.easy) : COUNTRIES;
+  }
+  function gridShape() {
+    return settings.easy ? { cols: 4, rows: 2 } : { cols: 5, rows: 3 };
+  }
 
   // ---------- Timers ----------
 
@@ -128,11 +136,12 @@
       button.addEventListener('click', () => answer(country, button));
       tiles[country.id] = button;
     });
-    layoutTiles(COUNTRIES);
+    layoutTiles(activeCountries());
   }
 
   function layoutTiles(order) {
     const grid = $('flags');
+    grid.textContent = '';
     order.forEach((country) => {
       const tile = tiles[country.id];
       tile.classList.remove('gone', 'right', 'wrong');
@@ -145,14 +154,16 @@
     $('flags').classList.toggle('waiting', !enabled);
   }
 
-  // Fit a 5×3 grid of 4:3 tiles into whatever space the screen leaves.
+  // Fit the grid of 4:3 tiles (5×3, or 4 + 3 in easy mode) into the space the screen leaves.
   function fitTiles() {
+    const { cols, rows } = gridShape();
     const board = $('board').getBoundingClientRect();
     const gap = parseFloat(getComputedStyle($('flags')).columnGap) || 10;
-    const byWidth = (board.width - 4 * gap) / 5;
-    const byHeight = ((board.height - 2 * gap) / 3) * (4 / 3);
+    const byWidth = (board.width - (cols - 1) * gap) / cols;
+    const byHeight = ((board.height - (rows - 1) * gap) / rows) * (4 / 3);
     const width = Math.max(60, Math.floor(Math.min(byWidth, byHeight)));
     document.documentElement.style.setProperty('--tile-w', width + 'px');
+    $('flags').style.width = cols * width + (cols - 1) * gap + 'px';
   }
 
   // ---------- HUD ----------
@@ -235,7 +246,7 @@
   }
 
   function showOverlay(id) {
-    ['start', 'tap-listen', 'win', 'settings'].forEach((name) => { $(name).hidden = name !== id; });
+    ['start', 'tap-listen', 'win', 'settings', 'confirm'].forEach((name) => { $(name).hidden = name !== id; });
     if (id === 'start') refreshReady();
   }
 
@@ -243,7 +254,7 @@
 
   function nextCountry() {
     if (!game.bag.length) {
-      game.bag = shuffle(COUNTRIES);
+      game.bag = shuffle(activeCountries());
       if (game.bag[game.bag.length - 1].id === game.lastId) game.bag.unshift(game.bag.pop());
     }
     const country = game.bag.pop();
@@ -267,7 +278,7 @@
     showOverlay(null);
     const id = ++game.roundId;
     game.round = { id, target: nextCountry(), startedAt: 0, removed: 0, autoRepeated: false };
-    layoutTiles(shuffle(COUNTRIES));
+    layoutTiles(shuffle(activeCountries()));
     setTilesEnabled(false);
     $('replay').disabled = true;
     showPoints(TOP_POINTS);
@@ -276,12 +287,15 @@
   }
 
   async function listen(id) {
+    // listenId lets a paused-then-resumed greeting cancel the earlier, unfinished one.
+    const listenId = ++game.listenId;
+    const current = () => id === game.roundId && listenId === game.listenId;
     game.phase = 'listening';
     setPrompt('Listen', 'listening');
     try {
       await playVoice('audio/' + game.round.target.id + '.mp3');
     } catch (error) {
-      if (id !== game.roundId) return;
+      if (!current()) return;
       // iOS refused to play without a tap: ask for one instead of starting a silent round.
       if (error && error.name === 'NotAllowedError') {
         game.phase = 'blocked';
@@ -290,7 +304,7 @@
       }
       // Any other audio failure: carry on so the round never gets stuck.
     }
-    if (id !== game.roundId) return;
+    if (!current()) return;
     beginGuessing();
   }
 
@@ -309,7 +323,7 @@
     const elapsed = secondsSince(round.startedAt, now);
     showPoints(pointsAt(now));
     showTimer(1 - elapsed / COUNTDOWN_SECONDS);
-    const due = Math.min(Math.floor(elapsed), COUNTRIES.length - FLAGS_LEFT_AT_END);
+    const due = Math.min(Math.floor(elapsed), activeCountries().length - FLAGS_LEFT_AT_END);
     while (round.removed < due) removeWrongFlag();
     if (settings.autoRepeat && !round.autoRepeated && elapsed >= AUTO_REPEAT_SECONDS) {
       round.autoRepeated = true;
@@ -320,7 +334,7 @@
 
   function removeWrongFlag() {
     const round = game.round;
-    const candidates = COUNTRIES.filter((country) =>
+    const candidates = activeCountries().filter((country) =>
       country.id !== round.target.id && !tiles[country.id].classList.contains('gone'));
     round.removed += 1;
     if (candidates.length <= FLAGS_LEFT_AT_END - 1) return;
@@ -489,6 +503,80 @@
   $('new-game').addEventListener('click', () => { newGame(); closeSettings(); });
   $('close-settings').addEventListener('click', closeSettings);
 
+  // ---------- Easy mode switch (for booth staff, bottom-right corner) ----------
+
+  let paused = null;
+
+  function roundUnderway() {
+    if (game.phase === 'won') return false;
+    return game.phase !== 'idle' || game.total > 0;
+  }
+
+  function showMode() {
+    const toggle = $('mode-toggle');
+    toggle.classList.toggle('on', settings.easy);
+    toggle.setAttribute('aria-pressed', String(settings.easy));
+    $('confirm-text').textContent = settings.easy ? 'Switch to Normal mode (15 flags)?' : 'Switch to Easy mode (7 flags)?';
+  }
+
+  function applyMode(easy) {
+    settings.easy = easy;
+    store.set('mode', easy ? 'easy' : 'full');
+    newGame();
+    game.roundId += 1;
+    game.listenId += 1;
+    game.round = null;
+    game.bag = [];
+    game.lastId = null;
+    setTilesEnabled(false);
+    $('replay').disabled = true;
+    showPoints(TOP_POINTS);
+    showTimer(1);
+    layoutTiles(activeCountries());
+    fitTiles();
+    showMode();
+    setPrompt('Ready?');
+    $('start-btn').textContent = 'Start';
+    showOverlay('start');
+  }
+
+  // Freeze the round (countdown, greeting, next-round timer) while the confirm box is open.
+  function pauseRound() {
+    const overlay = ['start', 'tap-listen', 'win', 'settings'].find((name) => !$(name).hidden) || null;
+    paused = { phase: game.phase, at: performance.now(), overlay };
+    stopEverything();
+    game.listenId += 1;
+    if (game.phase !== 'idle') game.phase = 'paused';
+    showOverlay('confirm');
+  }
+
+  function resumeRound() {
+    const was = paused;
+    paused = null;
+    if (!was) return;
+    game.phase = was.phase;
+    if (was.phase === 'listening' || was.phase === 'blocked') {
+      showOverlay(null);
+      sfx.unlock();
+      listen(game.round.id);          // start the greeting again from the top
+    } else if (was.phase === 'guessing') {
+      showOverlay(was.overlay);
+      game.round.startedAt += performance.now() - was.at;
+      game.frame = requestAnimationFrame(tick);
+    } else if (was.phase === 'feedback') {
+      if (game.total >= WIN_POINTS) showWin(); else startRound();
+    } else {
+      showOverlay(was.overlay || 'start');
+    }
+  }
+
+  $('mode-toggle').addEventListener('click', () => {
+    if (!$('confirm').hidden) return;
+    if (roundUnderway()) pauseRound(); else applyMode(!settings.easy);
+  });
+  $('confirm-cancel').addEventListener('click', resumeRound);
+  $('confirm-ok').addEventListener('click', () => { paused = null; applyMode(!settings.easy); });
+
   // ---------- Start ----------
 
   $('start-btn').addEventListener('click', startFromTap);
@@ -503,6 +591,7 @@
 
   buildTiles();
   buildCredits();
+  showMode();
   showTotal(false);
   fitTiles();
   window.addEventListener('resize', fitTiles);

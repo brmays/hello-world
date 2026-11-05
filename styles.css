@@ -57,9 +57,9 @@ button:disabled { cursor: default; }
 .label { display: block; font-size: clamp(13px, 1.9vh, 17px); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; opacity: .6; }
 
 .board { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+/* Flex rather than grid so easy mode's 7 flags sit as a centred 4 + 3. */
 .flags {
-  display: grid;
-  grid-template-columns: repeat(5, var(--tile-w, 170px));
+  display: flex; flex-wrap: wrap; justify-content: center;
   gap: var(--gap);
 }
 
@@ -240,6 +240,26 @@ button:disabled { cursor: default; }
 .btn.primary { background: var(--green); color: #fff; }
 details summary { cursor: pointer; font-weight: 800; padding: 6px 0; }
 .credits { margin: 6px 0 0; padding-left: 20px; font-weight: 500; font-size: 15px; }
+
+/* ---------- Easy mode switch and confirm box ---------- */
+
+.mode-toggle {
+  position: fixed; right: max(6px, env(safe-area-inset-right)); bottom: max(6px, env(safe-area-inset-bottom)); z-index: 12;
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+  border: 0; background: transparent; color: var(--ink);
+  font-size: 13px; font-weight: 800; opacity: .45;
+}
+.mode-toggle.on { opacity: .8; }
+.switch { position: relative; width: 34px; height: 20px; border-radius: 99px; background: rgba(23, 50, 77, .35); transition: background .2s; }
+.knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.mode-toggle.on .switch { background: var(--green); }
+.mode-toggle.on .knob { transform: translateX(14px); }
+
+#confirm { z-index: 15; }
+.confirm-card h2 { margin: 0 0 8px; font-size: clamp(26px, 4.6vh, 36px); font-weight: 900; }
+.confirm-card p { margin: 0 0 22px; font-size: 19px; }
+.row.center { justify-content: center; margin: 0; }
+.confirm-card .btn { font-size: 21px; padding: 14px 26px; }
 
 /* ---------- Portrait ---------- */
 

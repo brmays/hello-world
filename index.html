@@ -97,6 +97,21 @@
   </div>
 </section>
 
+<button id="mode-toggle" class="mode-toggle" aria-pressed="false" aria-label="Easy mode">
+  <span class="switch"><span class="knob"></span></span><span>Easy</span>
+</button>
+
+<section id="confirm" class="overlay" hidden>
+  <div class="card confirm-card">
+    <h2 id="confirm-text">Switch to Easy mode (7 flags)?</h2>
+    <p>This restarts the game and resets the score.</p>
+    <div class="row center">
+      <button id="confirm-cancel" class="btn">Keep playing</button>
+      <button id="confirm-ok" class="btn primary">Restart</button>
+    </div>
+  </div>
+</section>
+
 <div class="rotate" aria-hidden="true">
   <svg viewBox="0 0 64 64"><rect x="14" y="6" width="36" height="52" rx="6" fill="none" stroke="#fff" stroke-width="4"/><path d="M8 40a24 24 0 0 0 20 18" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M22 54l6 4-4 6" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
   <p>Turn the iPad sideways</p>
