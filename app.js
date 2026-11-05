@@ -247,7 +247,7 @@
 
   function showOverlay(id) {
     ['start', 'tap-listen', 'win', 'settings', 'confirm'].forEach((name) => { $(name).hidden = name !== id; });
-    if (id === 'start') refreshReady();
+    if (id === 'start') { refreshReady(); applyUpdateIfIdle(); }
   }
 
   // ---------- Rounds ----------
@@ -577,10 +577,22 @@
   $('confirm-cancel').addEventListener('click', resumeRound);
   $('confirm-ok').addEventListener('click', () => { paused = null; applyMode(!settings.easy); });
 
+  // ---------- Updates ----------
+
+  let updateWaiting = false;
+  function applyUpdateIfIdle() {
+    if (!updateWaiting || roundUnderway() || !$('settings').hidden || !$('confirm').hidden || !$('win').hidden) return;
+    location.reload();
+  }
+
   // ---------- Start ----------
 
   $('start-btn').addEventListener('click', startFromTap);
-  $('again-btn').addEventListener('click', () => { newGame(); startFromTap(); });
+  $('again-btn').addEventListener('click', () => {
+    if (updateWaiting) { location.reload(); return; }
+    newGame();
+    startFromTap();
+  });
   $('listen-btn').addEventListener('click', () => {
     if (game.phase !== 'blocked') return;
     sfx.unlock();
@@ -599,8 +611,15 @@
   showOverlay('start');
 
   if (window.isSecureContext && navigator.serviceWorker) {
+    // The app opens from its saved copy, so a new version arrives a few seconds after launch.
+    // Switch to it straight away when nobody is playing; otherwise wait until the game is over.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) { refreshReady(); return; }   // first install, nothing old to replace
+      updateWaiting = true;
+      applyUpdateIfIdle();
+    });
     navigator.serviceWorker.register('sw.js').catch(() => { /* offline relaunch: the active copy still works */ });
-    navigator.serviceWorker.addEventListener('controllerchange', refreshReady);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   }
 })();

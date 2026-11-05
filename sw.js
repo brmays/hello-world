@@ -1,8 +1,8 @@
 // Bump VERSION on every deploy so iPads save the new files on their next online launch.
-const VERSION = 'game-3';
-const CACHE = 'flag-game-' + VERSION;
+const VERSION = 'v1';
+const CACHE = 'hello-world-' + VERSION;
 // Only caches with these prefixes belong to this app; other github.io projects share the origin.
-const OWN_CACHE_PREFIXES = ['flag-game-', 'offline-tester-'];
+const OWN_CACHE_PREFIXES = ['hello-world-'];
 
 const COUNTRY_IDS = ['japan', 'france', 'germany', 'italy', 'south-korea', 'spain', 'norway',
   'philippines', 'thailand', 'egypt', 'iran', 'vietnam', 'indonesia', 'kenya', 'taiwan'];
