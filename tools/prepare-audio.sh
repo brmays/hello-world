@@ -6,7 +6,7 @@
 # Each recording can be m4a (Voice Memos), mp3, wav or aiff, and must be named after
 # its country id in countries.js, for example japan.m4a or south-korea.wav.
 # The script trims silence from both ends (the countdown starts the moment the
-# greeting ends), evens out the loudness, adds 0.15 s of lead-in so a Bluetooth
+# greeting ends; the end trim also drops trailing hiss, breaths and clicks), evens out the loudness, adds 0.15 s of lead-in so a Bluetooth
 # speaker waking up doesn't swallow the first syllable, and saves 128 kbps mono MP3.
 set -eu
 
@@ -25,7 +25,7 @@ for file in "$src"/*; do
     continue
   fi
   ffmpeg -nostdin -loglevel error -y -i "$file" -af \
-    "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,loudnorm=I=-16:TP=-1.5:LRA=11,adelay=150:all=1,apad=pad_dur=0.1,asetpts=N/SR/TB" \
+    "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.15:start_silence=0.08,areverse,loudnorm=I=-16:TP=-1.5:LRA=11,adelay=150:all=1,apad=pad_dur=0.1,asetpts=N/SR/TB" \
     -ac 1 -ar 44100 -b:a 128k "$out/$name.mp3"
   seconds=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$out/$name.mp3")
   echo "OK      audio/$name.mp3 (${seconds}s)"
