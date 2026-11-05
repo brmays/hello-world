@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <g id="globe" fill="none" stroke="#fff" stroke-width="3">
+      <circle r="100"/>
+      <ellipse rx="42" ry="100"/>
+      <ellipse rx="78" ry="100"/>
+      <line x1="0" y1="-100" x2="0" y2="100"/>
+      <path d="M-94 -34 H94 M-100 0 H100 M-94 34 H94 M-72 -70 H72 M-72 70 H72"/>
+    </g>
+    <path id="plane" fill="#fff" d="M0 0 L44 14 L0 28 L9 14 Z M9 14 L44 14"/>
+    <path id="cloud" fill="#fff" d="M20 50 a26 26 0 0 1 8 -50 a34 34 0 0 1 62 -6 a28 28 0 0 1 42 28 a22 22 0 0 1 -6 28 Z"/>
+    <path id="star" fill="#fff" d="M0 -12 L3.5 -3.5 L12 0 L3.5 3.5 L0 12 L-3.5 3.5 L-12 0 L-3.5 -3.5 Z"/>
+  </defs>
+
+  <g opacity="0.22">
+    <use href="#globe" transform="translate(1390 820) scale(2.6)"/>
+    <use href="#globe" transform="translate(170 150) scale(1.3)"/>
+    <use href="#globe" transform="translate(820 940) scale(0.8)"/>
+  </g>
+
+  <g fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="4 16" stroke-linecap="round" opacity="0.45">
+    <path d="M60 560 C 360 300, 700 260, 1020 360"/>
+    <path d="M330 980 C 520 760, 900 700, 1180 520"/>
+    <path d="M1580 160 C 1300 40, 980 60, 760 180"/>
+  </g>
+  <g opacity="0.6">
+    <use href="#plane" transform="translate(1020 344) rotate(14)"/>
+    <use href="#plane" transform="translate(1180 506) rotate(-30)"/>
+    <use href="#plane" transform="translate(770 190) rotate(205)"/>
+  </g>
+
+  <g opacity="0.35">
+    <use href="#cloud" transform="translate(520 70) scale(1.4)"/>
+    <use href="#cloud" transform="translate(1180 230) scale(1.1)"/>
+    <use href="#cloud" transform="translate(60 760) scale(1.2)"/>
+    <use href="#cloud" transform="translate(1440 470) scale(0.9)"/>
+  </g>
+
+  <g opacity="0.5">
+    <use href="#star" transform="translate(420 300)"/>
+    <use href="#star" transform="translate(960 120) scale(1.4)"/>
+    <use href="#star" transform="translate(1300 640)"/>
+    <use href="#star" transform="translate(240 470) scale(0.8)"/>
+    <use href="#star" transform="translate(640 620) scale(1.2)"/>
+    <use href="#star" transform="translate(1520 330) scale(0.9)"/>
+    <use href="#star" transform="translate(90 330) scale(1.1)"/>
+  </g>
+
+  <g transform="translate(1500 110)" fill="none" stroke="#fff" stroke-width="3" opacity="0.3">
+    <circle r="56"/>
+    <path d="M0 -76 L12 -12 L76 0 L12 12 L0 76 L-12 12 L-76 0 L-12 -12 Z" fill="#fff" fill-opacity="0.5"/>
+  </g>
+</svg>

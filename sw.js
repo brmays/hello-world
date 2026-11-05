@@ -1,13 +1,26 @@
-const VERSION = 'test-1';
-const CACHE = 'offline-tester-' + VERSION;
-const FILES = ["./index.html", "./app.js", "./styles.css", "./manifest.webmanifest", "./flags/austria.svg", "./flags/belgium.svg", "./flags/bulgaria.svg", "./flags/estonia.svg", "./flags/france.svg", "./flags/germany.svg", "./flags/hungary.svg", "./flags/ireland.svg", "./flags/italy.svg", "./flags/japan.svg", "./flags/lithuania.svg", "./flags/netherlands.svg", "./flags/romania.svg", "./flags/russia.svg", "./flags/ukraine.svg", "./audio/sound-a.mp3", "./audio/sound-b.mp3", "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png"];
+// Bump VERSION on every deploy so iPads save the new files on their next online launch.
+const VERSION = 'game-1';
+const CACHE = 'flag-game-' + VERSION;
+// Only caches with these prefixes belong to this app; other github.io projects share the origin.
+const OWN_CACHE_PREFIXES = ['flag-game-', 'offline-tester-'];
+
+const COUNTRY_IDS = ['japan', 'france', 'germany', 'italy', 'south-korea', 'spain', 'norway',
+  'philippines', 'thailand', 'egypt', 'iran', 'vietnam', 'indonesia', 'kenya', 'taiwan'];
+
+const FILES = [
+  './index.html', './styles.css', './countries.js', './app.js', './manifest.webmanifest',
+  './img/world.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
+  ...COUNTRY_IDS.map((id) => './flags/' + id + '.svg'),
+  ...COUNTRY_IDS.map((id) => './audio/' + id + '.mp3'),
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    // Bypass the HTTP cache so a half-updated host can't poison the offline copy.
     await Promise.all(FILES.map(async (file) => {
-      const response = await fetch(new Request(file, { cache: 'reload' }));
+      // The query string and cache: 'reload' skip both the CDN and browser caches,
+      // so a half-updated host can't mix old and new files into the offline copy.
+      const response = await fetch(new Request(file + '?v=' + VERSION, { cache: 'reload' }));
       if (!response.ok) throw new Error('Could not save ' + file);
       await cache.put(file, response);
     }));
@@ -18,8 +31,19 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const names = await caches.keys();
-    await Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name)));
+    const stale = names.filter((name) => name !== CACHE &&
+      OWN_CACHE_PREFIXES.some((prefix) => name.startsWith(prefix)));
+    await Promise.all(stale.map((name) => caches.delete(name)));
     await self.clients.claim();
+  })());
+});
+
+// The page asks how many files are saved, for the "Ready to play offline" check.
+self.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'status' || !event.ports[0]) return;
+  event.waitUntil((async () => {
+    const keys = await (await caches.open(CACHE)).keys();
+    event.ports[0].postMessage({ version: VERSION, saved: keys.length, total: FILES.length });
   })());
 });
 
@@ -55,8 +79,6 @@ async function rangeResponse(request, cached) {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  // ping.txt always goes to the network: it is how the page proves it is really offline.
-  if (url.pathname.endsWith('/ping.txt')) return;
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);

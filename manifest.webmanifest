@@ -1,21 +1,14 @@
 {
-  "name": "Offline Tester",
-  "short_name": "Offline Test",
+  "name": "Hello, World!",
+  "short_name": "Hello World",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#14532d",
-  "theme_color": "#14532d",
+  "orientation": "landscape",
+  "background_color": "#5ec8ff",
+  "theme_color": "#5ec8ff",
   "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }

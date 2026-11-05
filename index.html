@@ -2,75 +2,109 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Offline Tester</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Hello, World!</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Offline Test">
+<meta name="apple-mobile-web-app-title" content="Hello World">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#14532d">
-<!--HEAD_LINKS-->
+<meta name="theme-color" content="#5ec8ff">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="stylesheet" href="styles.css">
-<!--/HEAD_LINKS-->
 </head>
 <body>
-<main>
-  <header>
-    <h1>Offline Tester</h1>
-    <p class="muted" id="version"></p>
+<div class="app">
+  <header class="hud">
+    <button id="replay" class="replay" disabled aria-label="Play the greeting again">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/><path d="M14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+      <span>Again</span>
+    </button>
+
+    <div class="prompt-box">
+      <p id="prompt" class="prompt" aria-live="polite">Ready?</p>
+      <div class="timer"><div id="timer-fill" class="timer-fill"></div></div>
+    </div>
+
+    <div id="points-bubble" class="points-bubble" data-level="high">
+      <span class="label">Points</span>
+      <b id="points">1000</b>
+    </div>
+
+    <div class="total-box">
+      <span class="label">Score</span>
+      <b id="total">0</b>
+      <div class="goal">
+        <div id="goal-fill" class="goal-fill"></div>
+        <svg class="goal-star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7z"/></svg>
+      </div>
+    </div>
   </header>
 
-  <section id="verdict" class="verdict bad" aria-live="polite">
-    <strong id="verdict-title">Scripts are NOT running</strong>
-    <p id="verdict-next">This page opened, but the iPad is blocking its code. If this is the file copied to the iPad, that route won't work.</p>
-  </section>
-
-  <section>
-    <h2>1. Checks</h2>
-    <ul id="checks" class="checks"></ul>
-  </section>
-
-  <section>
-    <h2>2. Sound</h2>
-    <p class="muted">Tap each button, then say whether you heard it. Try again with the Bluetooth speaker.</p>
-    <div class="sound-tests">
-      <div class="sound-card">
-        <button id="sound-a" class="btn">Play sound A</button>
-        <p class="muted">Audio player</p>
-        <div class="heard" data-sound="a">
-          <button class="btn small" data-heard="yes">Heard it</button>
-          <button class="btn small ghost" data-heard="no">Silent</button>
-        </div>
-        <p id="sound-a-status" class="status"></p>
-      </div>
-      <div class="sound-card">
-        <button id="sound-b" class="btn">Play sound B</button>
-        <p class="muted">Web Audio</p>
-        <div class="heard" data-sound="b">
-          <button class="btn small" data-heard="yes">Heard it</button>
-          <button class="btn small ghost" data-heard="no">Silent</button>
-        </div>
-        <p id="sound-b-status" class="status"></p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>3. Game flow</h2>
-    <p class="muted">The chime stands in for the greeting. Flags are test images only.</p>
-    <div class="round-bar">
-      <button id="round-start" class="btn">Start round</button>
-      <div class="scores">
-        <div><span class="muted">This round</span><b id="points">1000</b></div>
-        <div><span class="muted">Total</span><b id="total">0</b></div>
-      </div>
-    </div>
-    <p id="prompt" class="prompt" aria-live="polite">Tap Start round.</p>
+  <main id="board" class="board">
     <div id="flags" class="flags"></div>
-  </section>
-</main>
-<!--BODY_SCRIPT--><script src="app.js"></script><!--/BODY_SCRIPT-->
+  </main>
+</div>
+
+<button id="gear" class="gear" aria-label="Teacher settings: press and hold">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.3 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.3 2.6h4l.3-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+</button>
+
+<section id="start" class="overlay">
+  <div class="card">
+    <h1 class="logo">Hello, <span>World!</span></h1>
+    <p class="lead">Listen to the greeting, then tap the matching flag.<br>Faster answers score more. First to 1000 wins!</p>
+    <button id="start-btn" class="big-btn">Start</button>
+    <p id="ready" class="ready"></p>
+  </div>
+</section>
+
+<section id="tap-listen" class="overlay" hidden>
+  <div class="card">
+    <button id="listen-btn" class="big-btn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+      Tap to listen
+    </button>
+  </div>
+</section>
+
+<section id="win" class="overlay" hidden>
+  <div class="card win-card">
+    <svg class="trophy" viewBox="0 0 64 64" aria-hidden="true">
+      <path fill="#ffc83d" stroke="#8a5a00" stroke-width="3" stroke-linejoin="round" d="M18 6h28v14a14 14 0 0 1-28 0z"/>
+      <path fill="none" stroke="#8a5a00" stroke-width="3" d="M18 11H9v5a9 9 0 0 0 10 9M46 11h9v5a9 9 0 0 1-10 9"/>
+      <path fill="#ffc83d" stroke="#8a5a00" stroke-width="3" stroke-linejoin="round" d="M28 34h8v10h-8zM20 44h24l3 12H17z"/>
+    </svg>
+    <h2>You win!</h2>
+    <p class="win-score"><b id="win-total">0</b> points</p>
+    <button id="again-btn" class="big-btn">Play again</button>
+  </div>
+</section>
+
+<section id="settings" class="overlay" hidden>
+  <div class="card settings-card">
+    <h2>Teacher settings</h2>
+    <ul id="status-list" class="status-list"></ul>
+    <label class="toggle"><input type="checkbox" id="auto-repeat"> Repeat the greeting automatically after 6 seconds</label>
+    <div class="row">
+      <button id="new-game" class="btn">New game (reset score)</button>
+      <button id="close-settings" class="btn primary">Close</button>
+    </div>
+    <details>
+      <summary>Credits</summary>
+      <ul id="credits" class="credits"></ul>
+    </details>
+  </div>
+</section>
+
+<div class="rotate" aria-hidden="true">
+  <svg viewBox="0 0 64 64"><rect x="14" y="6" width="36" height="52" rx="6" fill="none" stroke="#fff" stroke-width="4"/><path d="M8 40a24 24 0 0 0 20 18" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M22 54l6 4-4 6" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <p>Turn the iPad sideways</p>
+</div>
+
+<div id="fx" class="fx" aria-hidden="true"></div>
+
+<script src="countries.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

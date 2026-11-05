@@ -1,365 +1,517 @@
 (function () {
   'use strict';
 
-  const VERSION = 'test-1';
-  const FILES = ["./index.html", "./app.js", "./styles.css", "./manifest.webmanifest", "./flags/austria.svg", "./flags/belgium.svg", "./flags/bulgaria.svg", "./flags/estonia.svg", "./flags/france.svg", "./flags/germany.svg", "./flags/hungary.svg", "./flags/ireland.svg", "./flags/italy.svg", "./flags/japan.svg", "./flags/lithuania.svg", "./flags/netherlands.svg", "./flags/romania.svg", "./flags/russia.svg", "./flags/ukraine.svg", "./audio/sound-a.mp3", "./audio/sound-b.mp3", "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png"];
-  const FLAGS = [{"name": "Austria", "file": "flags/austria.svg"}, {"name": "Belgium", "file": "flags/belgium.svg"}, {"name": "Bulgaria", "file": "flags/bulgaria.svg"}, {"name": "Estonia", "file": "flags/estonia.svg"}, {"name": "France", "file": "flags/france.svg"}, {"name": "Germany", "file": "flags/germany.svg"}, {"name": "Hungary", "file": "flags/hungary.svg"}, {"name": "Ireland", "file": "flags/ireland.svg"}, {"name": "Italy", "file": "flags/italy.svg"}, {"name": "Japan", "file": "flags/japan.svg"}, {"name": "Lithuania", "file": "flags/lithuania.svg"}, {"name": "Netherlands", "file": "flags/netherlands.svg"}, {"name": "Romania", "file": "flags/romania.svg"}, {"name": "Russia", "file": "flags/russia.svg"}, {"name": "Ukraine", "file": "flags/ukraine.svg"}];
-  const INLINE = window.INLINE_ASSETS || null;
-  const SINGLE_FILE = !!INLINE;
-  const COUNTDOWN_SECONDS = 13;
+  const COUNTDOWN_SECONDS = 13;    // points fall from TOP to FLOOR over this time
   const TOP_POINTS = 1000;
   const FLOOR_POINTS = 250;
   const WIN_POINTS = 1000;
+  const FLAGS_LEFT_AT_END = 2;     // wrong flags vanish one per second until this many remain
+  const AUTO_REPEAT_SECONDS = 6;
+  const NEXT_ROUND_DELAY = 2200;
+  const COUNTRIES = window.COUNTRIES;
 
   const $ = (id) => document.getElementById(id);
-  const assetUrl = (path) => (INLINE ? INLINE[path] : path);
-
   const store = {
     get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
     set(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* storage blocked */ } },
   };
 
-  const state = {
-    secure: window.isSecureContext,
-    standalone: window.navigator.standalone === true ||
-      (window.matchMedia && matchMedia('(display-mode: standalone)').matches),
-    swSupported: 'serviceWorker' in navigator,
-    swError: '',
-    controlled: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
-    savedCount: null,
-    serverReachable: null,
-    launchChecked: false,
-    launchedOffline: false,
-    offlineLaunches: Number(store.get('offlineLaunches') || 0),
-    countedThisLaunch: false,
-    storage: '',
-    heard: { a: null, b: null },
-    roundDone: false,
-  };
+  const settings = { autoRepeat: store.get('autoRepeat') !== 'off' };
+  const game = { phase: 'idle', total: 0, round: null, roundId: 0, bag: [], lastId: null, timers: [], frame: 0 };
+  const tiles = {};
 
-  // ---------- Checks and verdict ----------
+  // ---------- Timers ----------
 
-  function row(ok, label, value) {
-    const mark = ok === true ? ['✓', 'good'] : ok === false ? ['✗', 'bad'] : ok === 'warn' ? ['!', 'warn'] : ['…', 'wait'];
-    return '<li><span class="mark ' + mark[1] + '">' + mark[0] + '</span><span>' + label +
-      '</span><span class="value">' + (value || '') + '</span></li>';
+  function later(fn, ms) { game.timers.push(setTimeout(fn, ms)); }
+  function stopEverything() {
+    game.timers.forEach(clearTimeout);
+    game.timers = [];
+    cancelAnimationFrame(game.frame);
+    voice.pause();
   }
 
-  function renderChecks() {
-    const total = FILES.length;
-    const reach = state.serverReachable;
-    const rows = [row(true, 'Scripts are running', '')];
-    if (SINGLE_FILE) {
-      rows.push(row(true, 'Running from the single copied file', ''));
-    } else {
-      const installed = state.savedCount === total;
-      rows.push(
-        row(state.secure, 'Secure (HTTPS) page', location.protocol.replace(':', '')),
-        row(state.standalone ? true : 'warn', 'Opened from Home Screen', state.standalone ? 'Yes' : 'No, in browser'),
-        row(state.swSupported ? true : false, 'Offline support available', state.swSupported ? 'Yes' : 'Blocked'),
-        row(state.swError ? false : state.controlled ? true : null, 'Offline support active', state.swError || (state.controlled ? 'Yes' : 'Starting')),
-        row(state.savedCount === null ? null : installed, 'All files saved on this iPad', (state.savedCount === null ? '?' : state.savedCount) + ' of ' + total),
-        row(reach === null ? null : reach ? 'warn' : true, 'Server unreachable (truly offline)', reach === null ? 'Checking' : reach ? 'Still online' : 'Offline'),
-        row(state.offlineLaunches > 0 ? true : 'warn', 'Offline launches from Home Screen', String(state.offlineLaunches))
-      );
-      if (state.storage) rows.push(row(true, 'Storage used', state.storage));
-    }
-    rows.push(
-      row(state.heard.a === null ? null : state.heard.a, 'Sound A heard', state.heard.a === null ? 'Not tested' : state.heard.a ? 'Yes' : 'No'),
-      row(state.heard.b === null ? null : state.heard.b, 'Sound B heard', state.heard.b === null ? 'Not tested' : state.heard.b ? 'Yes' : 'No'),
-      row(state.roundDone ? true : null, 'Game round finished', state.roundDone ? 'Yes' : 'Not tested')
-    );
-    $('checks').innerHTML = rows.join('');
-  }
+  // ---------- Greeting audio ----------
+  // One audio element for every greeting: once a tap has started it, iOS lets it play
+  // again later without another tap, so the next round can start on its own.
 
-  function setVerdict(kind, title, next) {
-    $('verdict').className = 'verdict ' + kind;
-    $('verdict-title').textContent = title;
-    $('verdict-next').textContent = next;
-  }
+  const voice = new Audio();
+  voice.preload = 'auto';
 
-  function renderVerdict() {
-    const soundOk = state.heard.a === true || state.heard.b === true;
-    const allTested = soundOk && state.roundDone;
-
-    if (SINGLE_FILE) {
-      if (allTested) setVerdict('good', 'PASS: the copied file works', 'Scripts, sound and tapping all work from the copied file. Take a screenshot.');
-      else setVerdict('warn', 'Scripts run from the copied file', 'Now test both sounds and play one round below. Open it again after turning Wi-Fi off.');
-      return;
-    }
-    if (!state.secure) return setVerdict('bad', 'This address isn’t secure', 'Offline support needs an https:// address.');
-    if (!state.swSupported) return setVerdict('bad', 'Offline support is blocked', 'This iPad won’t allow this route. Take a screenshot.');
-    if (state.swError) return setVerdict('bad', 'Saving for offline failed', state.swError + ' Take a screenshot.');
-
-    const saved = state.controlled && state.savedCount === FILES.length;
-    if (!saved) return setVerdict('warn', 'Saving files to this iPad…', 'Stay online and keep this page open until this changes.');
-    if (state.serverReachable === null) return setVerdict('warn', 'Checking the connection…', 'One moment.');
-
-    // Only a launch that began offline counts: a page already open proves nothing.
-    if (state.standalone && state.launchedOffline) {
-      if (allTested) return setVerdict('good', 'PASS: works offline from the Home Screen', 'This route works on this iPad. Take a screenshot.');
-      return setVerdict('good', 'Opened offline from the Home Screen', 'Now test both sounds and play one round below to finish.');
-    }
-    if (state.serverReachable === false && !state.launchedOffline) {
-      return setVerdict('warn', 'Offline now. Close and reopen it.', 'This page was already open, so it doesn’t count yet. Close it completely, then open it again.');
-    }
-    if (state.standalone) return setVerdict('warn', 'Installed. Now go offline.', 'Turn Wi-Fi off, close this app completely, then open it again from the Home Screen.');
-    if (state.launchedOffline) return setVerdict('warn', 'Works offline in Safari only so far', 'Go back online, add it to the Home Screen, and repeat the test from the icon.');
-    return setVerdict('warn', 'Files saved. Add it to the Home Screen.', 'Share → Add to Home Screen, then open the new icon once while still online.');
-  }
-
-  function render() { renderChecks(); renderVerdict(); }
-
-  // ---------- Offline setup ----------
-
-  async function countSaved() {
-    if (!window.caches) return;
-    try {
-      const cache = await caches.open('offline-tester-' + VERSION);
-      const keys = await cache.keys();
-      state.savedCount = Math.min(keys.length, FILES.length);
-    } catch (e) {
-      state.savedCount = null;
-    }
-    state.controlled = !!navigator.serviceWorker.controller;
-  }
-
-  async function pingServer() {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-    try {
-      const response = await fetch('ping.txt?t=' + Date.now(), { cache: 'no-store', signal: controller.signal });
-      state.serverReachable = response.ok;
-    } catch (e) {
-      state.serverReachable = false;
-    }
-    clearTimeout(timer);
-  }
-
-  function countOfflineLaunch() {
-    if (!state.launchChecked) {
-      state.launchChecked = true;
-      state.launchedOffline = state.serverReachable === false && state.controlled;
-    }
-    if (state.countedThisLaunch || !state.standalone || !state.launchedOffline) return;
-    state.countedThisLaunch = true;
-    state.offlineLaunches += 1;
-    store.set('offlineLaunches', String(state.offlineLaunches));
-  }
-
-  async function readStorage() {
-    if (!navigator.storage || !navigator.storage.estimate) return;
-    try {
-      const estimate = await navigator.storage.estimate();
-      state.storage = (estimate.usage / 1048576).toFixed(1) + ' MB';
-    } catch (e) { /* not available */ }
-  }
-
-  async function refresh() {
-    await Promise.all([countSaved(), pingServer(), readStorage()]);
-    countOfflineLaunch();
-    render();
-  }
-
-  async function setupOffline() {
-    if (!state.secure || !state.swSupported) return;
-    try {
-      await navigator.serviceWorker.register('sw.js');
-      navigator.serviceWorker.addEventListener('controllerchange', refresh);
-      await navigator.serviceWorker.ready;
-    } catch (e) {
-      // Offline, re-registering can fail on the update check; an active offline copy still counts.
-      if (!navigator.serviceWorker.controller) state.swError = (e && e.message) || 'Registration failed.';
-    }
-    await refresh();
-  }
-
-  // ---------- Audio ----------
-
-  let audioContext = null;
-  const decoded = {};
-
-  function unlockAudio() {
-    const Ctor = window.AudioContext || window.webkitAudioContext;
-    if (!Ctor) return null;
-    if (!audioContext) audioContext = new Ctor();
-    if (audioContext.state !== 'running') audioContext.resume();
-    return audioContext;
-  }
-
-  async function readBytes(path) {
-    const url = assetUrl(path);
-    if (url.startsWith('data:')) {
-      const binary = atob(url.slice(url.indexOf(',') + 1));
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      return bytes.buffer;
-    }
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Could not load sound');
-    return response.arrayBuffer();
-  }
-
-  function playWebAudio(path) {
-    const context = unlockAudio();
-    if (!context) return Promise.reject(new Error('Web Audio unavailable'));
-    return (async () => {
-      if (!decoded[path]) {
-        const bytes = await readBytes(path);
-        decoded[path] = await new Promise((resolve, reject) => context.decodeAudioData(bytes, resolve, reject));
-      }
-      await new Promise((resolve) => {
-        const source = context.createBufferSource();
-        source.buffer = decoded[path];
-        source.connect(context.destination);
-        source.onended = resolve;
-        source.start(0);
-      });
-    })();
-  }
-
-  function playElement(path) {
+  function playVoice(src) {
     return new Promise((resolve, reject) => {
-      const audio = new Audio(assetUrl(path));
-      audio.onended = () => resolve();
-      audio.onerror = () => reject(new Error('Audio player error'));
-      const started = audio.play();
-      if (started && started.catch) started.catch(reject);
+      let settled = false;
+      let guard = 0;
+      const settle = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(guard);
+        voice.removeEventListener('ended', onEnded);
+        voice.removeEventListener('error', onError);
+        voice.removeEventListener('loadedmetadata', onMeta);
+        if (error) reject(error); else resolve();
+      };
+      const onEnded = () => settle();
+      const onError = () => settle(new Error('Could not play ' + src));
+      // Never let a stuck clip hold up the round.
+      const onMeta = () => {
+        if (!isFinite(voice.duration)) return;
+        clearTimeout(guard);
+        guard = setTimeout(() => settle(), voice.duration * 1000 + 2500);
+      };
+      guard = setTimeout(() => settle(), 10000);
+      voice.addEventListener('ended', onEnded);
+      voice.addEventListener('error', onError);
+      voice.addEventListener('loadedmetadata', onMeta);
+      voice.pause();
+      if (voice.getAttribute('src') !== src) voice.src = src;
+      else try { voice.currentTime = 0; } catch (e) { /* not loaded yet */ }
+      const started = voice.play();
+      if (started && started.catch) started.catch((error) => settle(error));
     });
   }
 
-  function wireSound(id, statusId, play) {
-    $(id).addEventListener('click', async () => {
-      $(statusId).textContent = 'Playing…';
-      try {
-        await play();
-        $(statusId).textContent = 'Finished playing. Did you hear it?';
-      } catch (e) {
-        $(statusId).textContent = 'Failed: ' + ((e && e.message) || 'unknown error');
-      }
-    });
+  // ---------- Sound effects (synthesised, no files) ----------
+
+  const sfx = (() => {
+    let context = null;
+    function unlock() {
+      const Ctor = window.AudioContext || window.webkitAudioContext;
+      if (!Ctor) return;
+      if (!context) context = new Ctor();
+      if (context.state !== 'running') context.resume();
+    }
+    function tone(freq, at, length, type, volume) {
+      if (!context || context.state !== 'running') return;
+      const start = context.currentTime + at;
+      const osc = context.createOscillator();
+      const gain = context.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(volume || 0.25, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + length);
+      osc.connect(gain);
+      gain.connect(context.destination);
+      osc.start(start);
+      osc.stop(start + length + 0.05);
+    }
+    return {
+      unlock,
+      correct() { tone(660, 0, 0.15, 'triangle'); tone(880, 0.1, 0.15, 'triangle'); tone(1320, 0.2, 0.35, 'triangle'); },
+      wrong() { tone(240, 0, 0.22, 'square', 0.1); tone(170, 0.16, 0.35, 'square', 0.1); },
+      win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.13, 0.3, 'triangle')); tone(1047, 0.55, 0.8, 'triangle'); },
+    };
+  })();
+
+  // ---------- Board ----------
+
+  function shuffle(list) {
+    const copy = list.slice();
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
   }
 
-  wireSound('sound-a', 'sound-a-status', () => playElement('audio/sound-a.mp3'));
-  wireSound('sound-b', 'sound-b-status', () => playWebAudio('audio/sound-b.mp3'));
-
-  document.querySelectorAll('.heard').forEach((group) => {
-    group.addEventListener('click', (event) => {
-      const answer = event.target.getAttribute('data-heard');
-      if (!answer) return;
-      const sound = group.getAttribute('data-sound');
-      state.heard[sound] = answer === 'yes';
-      $('sound-' + sound + '-status').textContent = answer === 'yes' ? 'Marked as heard.' : 'Marked as silent.';
-      render();
-    });
-  });
-
-  // ---------- Game flow ----------
-
-  const round = { active: false, accepting: false, target: null, frame: 0, removeTimer: 0, startedAt: 0, points: TOP_POINTS, total: 0 };
-  const flagButtons = {};
-
-  function buildFlags() {
-    FLAGS.forEach((flag) => {
+  function buildTiles() {
+    COUNTRIES.forEach((country) => {
       const button = document.createElement('button');
       button.className = 'flag';
       button.disabled = true;
-      button.setAttribute('aria-label', flag.name);
+      button.setAttribute('aria-label', country.name);
       const image = document.createElement('img');
-      image.alt = flag.name;
-      image.src = assetUrl(flag.file);
+      image.src = 'flags/' + country.id + '.svg';
+      image.alt = country.name;
+      image.draggable = false;
       button.appendChild(image);
-      button.addEventListener('click', () => answer(flag.name));
-      $('flags').appendChild(button);
-      flagButtons[flag.name] = button;
+      button.addEventListener('click', () => answer(country, button));
+      tiles[country.id] = button;
+    });
+    layoutTiles(COUNTRIES);
+  }
+
+  function layoutTiles(order) {
+    const grid = $('flags');
+    order.forEach((country) => {
+      const tile = tiles[country.id];
+      tile.classList.remove('gone', 'right', 'wrong');
+      grid.appendChild(tile);
     });
   }
 
-  function setFlagsEnabled(enabled) {
-    Object.values(flagButtons).forEach((button) => { button.disabled = !enabled; });
+  function setTilesEnabled(enabled) {
+    Object.values(tiles).forEach((tile) => { tile.disabled = !enabled; });
+    $('flags').classList.toggle('waiting', !enabled);
   }
 
-  function stopTimers() {
-    cancelAnimationFrame(round.frame);
-    clearInterval(round.removeTimer);
+  // Fit a 5×3 grid of 4:3 tiles into whatever space the screen leaves.
+  function fitTiles() {
+    const board = $('board').getBoundingClientRect();
+    const gap = parseFloat(getComputedStyle($('flags')).columnGap) || 10;
+    const byWidth = (board.width - 4 * gap) / 5;
+    const byHeight = ((board.height - 2 * gap) / 3) * (4 / 3);
+    const width = Math.max(60, Math.floor(Math.min(byWidth, byHeight)));
+    document.documentElement.style.setProperty('--tile-w', width + 'px');
   }
 
-  function tick() {
-    const elapsed = (performance.now() - round.startedAt) / 1000;
-    const span = TOP_POINTS - FLOOR_POINTS;
-    round.points = Math.max(FLOOR_POINTS, Math.round(TOP_POINTS - span * (elapsed / COUNTDOWN_SECONDS)));
-    $('points').textContent = round.points;
-    if (round.accepting) round.frame = requestAnimationFrame(tick);
+  // ---------- HUD ----------
+
+  function setPrompt(text, tone) {
+    const prompt = $('prompt');
+    prompt.textContent = text;
+    prompt.className = 'prompt' + (tone ? ' ' + tone : '');
   }
 
-  function removeOneWrongFlag() {
-    const visibleWrong = FLAGS.filter((flag) => flag.name !== round.target && !flagButtons[flag.name].classList.contains('gone'));
-    if (visibleWrong.length <= 1) {
-      clearInterval(round.removeTimer);
-      return;
+  function levelFor(points) {
+    return points >= 750 ? 'high' : points >= 500 ? 'mid' : 'low';
+  }
+
+  function showPoints(points) {
+    $('points').textContent = points;
+    const bubble = $('points-bubble');
+    const level = levelFor(points);
+    if (bubble.dataset.level !== level) {
+      bubble.dataset.level = level;
+      bubble.classList.remove('bump');
+      void bubble.offsetWidth;
+      bubble.classList.add('bump');
     }
-    const pick = visibleWrong[Math.floor(Math.random() * visibleWrong.length)];
-    flagButtons[pick.name].classList.add('gone');
+    $('timer-fill').dataset.level = level;
   }
 
-  async function startRound() {
-    if (round.active) return;
-    round.active = true;
-    unlockAudio();
-    $('round-start').disabled = true;
-    Object.values(flagButtons).forEach((button) => button.classList.remove('gone', 'right', 'wrong'));
-    setFlagsEnabled(false);
-    round.points = TOP_POINTS;
-    $('points').textContent = TOP_POINTS;
-    round.target = FLAGS[Math.floor(Math.random() * FLAGS.length)].name;
-    $('prompt').textContent = 'Listen…';
+  function showTimer(fraction) {
+    $('timer-fill').style.transform = 'scaleX(' + Math.max(0, Math.min(1, fraction)) + ')';
+  }
+
+  let shownTotal = 0;
+  function showTotal(animate) {
+    const from = shownTotal;
+    const to = game.total;
+    shownTotal = to;
+    $('goal-fill').style.width = Math.min(100, (to / WIN_POINTS) * 100) + '%';
+    if (!animate || from === to) { $('total').textContent = to; return; }
+    const box = $('total').parentElement;
+    box.classList.remove('bump');
+    void box.offsetWidth;
+    box.classList.add('bump');
+    const began = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, secondsSince(began, now) / 0.7);
+      $('total').textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - t, 3)));
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  function popText(text, anchor, good) {
+    const rect = anchor.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = 'pop ' + (good ? 'good' : 'bad');
+    pop.textContent = text;
+    pop.style.left = rect.left + rect.width / 2 + 'px';
+    pop.style.top = rect.top + rect.height / 2 + 'px';
+    pop.addEventListener('animationend', () => pop.remove());
+    $('fx').appendChild(pop);
+  }
+
+  function confetti(anchor, count) {
+    const rect = anchor.getBoundingClientRect();
+    const colors = ['#ffc83d', '#2fbf71', '#ff5a5f', '#5ec8ff', '#a66bff', '#ff9f1c'];
+    for (let i = 0; i < count; i++) {
+      const piece = document.createElement('span');
+      piece.className = 'confetti';
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 120 + Math.random() * 260;
+      piece.style.left = rect.left + rect.width / 2 + 'px';
+      piece.style.top = rect.top + rect.height / 2 + 'px';
+      piece.style.background = colors[i % colors.length];
+      piece.style.setProperty('--dx', Math.cos(angle) * distance + 'px');
+      piece.style.setProperty('--dy', Math.sin(angle) * distance + 180 + 'px');
+      piece.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
+      piece.addEventListener('animationend', () => piece.remove());
+      $('fx').appendChild(piece);
+    }
+  }
+
+  function showOverlay(id) {
+    ['start', 'tap-listen', 'win', 'settings'].forEach((name) => { $(name).hidden = name !== id; });
+    if (id === 'start') refreshReady();
+  }
+
+  // ---------- Rounds ----------
+
+  function nextCountry() {
+    if (!game.bag.length) {
+      game.bag = shuffle(COUNTRIES);
+      if (game.bag[game.bag.length - 1].id === game.lastId) game.bag.unshift(game.bag.pop());
+    }
+    const country = game.bag.pop();
+    game.lastId = country.id;
+    return country;
+  }
+
+  // Animation-frame timestamps can be a few ms older than startedAt, so clamp at zero.
+  function secondsSince(start, now) {
+    return Math.max(0, (now - start) / 1000);
+  }
+
+  function pointsAt(now) {
+    const elapsed = secondsSince(game.round.startedAt, now);
+    const points = TOP_POINTS - (TOP_POINTS - FLOOR_POINTS) * (elapsed / COUNTDOWN_SECONDS);
+    return Math.max(FLOOR_POINTS, Math.round(points));
+  }
+
+  function startRound() {
+    stopEverything();
+    showOverlay(null);
+    const id = ++game.roundId;
+    game.round = { id, target: nextCountry(), startedAt: 0, removed: 0, autoRepeated: false };
+    layoutTiles(shuffle(COUNTRIES));
+    setTilesEnabled(false);
+    $('replay').disabled = true;
+    showPoints(TOP_POINTS);
+    showTimer(1);
+    listen(id);
+  }
+
+  async function listen(id) {
+    game.phase = 'listening';
+    setPrompt('Listen', 'listening');
     try {
-      await playWebAudio('audio/sound-a.mp3');
-    } catch (e) {
-      try { await playElement('audio/sound-a.mp3'); } catch (e2) { /* continue without sound */ }
+      await playVoice('audio/' + game.round.target.id + '.mp3');
+    } catch (error) {
+      if (id !== game.roundId) return;
+      // iOS refused to play without a tap: ask for one instead of starting a silent round.
+      if (error && error.name === 'NotAllowedError') {
+        game.phase = 'blocked';
+        showOverlay('tap-listen');
+        return;
+      }
+      // Any other audio failure: carry on so the round never gets stuck.
     }
-    $('prompt').textContent = 'Find: ' + round.target;
-    round.accepting = true;
-    round.startedAt = performance.now();
-    setFlagsEnabled(true);
-    round.frame = requestAnimationFrame(tick);
-    round.removeTimer = setInterval(removeOneWrongFlag, 1000);
+    if (id !== game.roundId) return;
+    beginGuessing();
   }
 
-  function answer(name) {
-    if (!round.accepting) return;
-    round.accepting = false;
-    stopTimers();
-    setFlagsEnabled(false);
-    flagButtons[round.target].classList.add('right');
-    const correct = name === round.target;
+  function beginGuessing() {
+    game.phase = 'guessing';
+    game.round.startedAt = performance.now();
+    setPrompt('Which flag?');
+    setTilesEnabled(true);
+    $('replay').disabled = false;
+    game.frame = requestAnimationFrame(tick);
+  }
+
+  function tick(now) {
+    if (game.phase !== 'guessing') return;
+    const round = game.round;
+    const elapsed = secondsSince(round.startedAt, now);
+    showPoints(pointsAt(now));
+    showTimer(1 - elapsed / COUNTDOWN_SECONDS);
+    const due = Math.min(Math.floor(elapsed), COUNTRIES.length - FLAGS_LEFT_AT_END);
+    while (round.removed < due) removeWrongFlag();
+    if (settings.autoRepeat && !round.autoRepeated && elapsed >= AUTO_REPEAT_SECONDS) {
+      round.autoRepeated = true;
+      replay();
+    }
+    game.frame = requestAnimationFrame(tick);
+  }
+
+  function removeWrongFlag() {
+    const round = game.round;
+    const candidates = COUNTRIES.filter((country) =>
+      country.id !== round.target.id && !tiles[country.id].classList.contains('gone'));
+    round.removed += 1;
+    if (candidates.length <= FLAGS_LEFT_AT_END - 1) return;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    tiles[pick.id].classList.add('gone');
+    tiles[pick.id].disabled = true;
+  }
+
+  function replay() {
+    if (game.phase !== 'guessing') return;
+    playVoice('audio/' + game.round.target.id + '.mp3').catch(() => {});
+  }
+
+  function answer(country, tile) {
+    if (game.phase !== 'guessing') return;
+    const points = pointsAt(performance.now());
+    game.phase = 'feedback';
+    stopEverything();
+    setTilesEnabled(false);
+    $('replay').disabled = true;
+    const correct = country.id === game.round.target.id;
     if (correct) {
-      round.total += round.points;
+      game.total += points;
+      showPoints(points);
+      tile.classList.add('right');
+      setPrompt('Correct!', 'good');
+      popText('+' + points, tile, true);
+      confetti(tile, 28);
+      sfx.correct();
     } else {
-      flagButtons[name].classList.add('wrong');
+      tile.classList.add('wrong');
+      setPrompt('Not this one!', 'bad');
+      popText('+0', tile, false);
+      sfx.wrong();
     }
-    $('total').textContent = round.total;
-    const won = round.total >= WIN_POINTS;
-    $('prompt').textContent = won
-      ? 'You win! ' + round.total + ' points.'
-      : correct ? 'Correct: +' + round.points + ' points.' : 'Wrong. The answer was ' + round.target + '. +0 points.';
-    if (won) round.total = 0;
-    round.active = false;
-    $('round-start').disabled = false;
-    $('round-start').textContent = won ? 'New game' : 'Next round';
-    state.roundDone = true;
-    render();
+    showTotal(true);
+    if (game.total >= WIN_POINTS) later(showWin, 1300);
+    else later(startRound, NEXT_ROUND_DELAY);
   }
 
-  $('round-start').addEventListener('click', startRound);
+  function showWin() {
+    game.phase = 'won';
+    $('win-total').textContent = game.total;
+    showOverlay('win');
+    sfx.win();
+    confetti($('win-total'), 70);
+  }
+
+  function newGame() {
+    stopEverything();
+    game.total = 0;
+    showTotal(false);
+    game.phase = 'idle';
+  }
+
+  // Every button that starts sound is a tap, which is what unlocks audio on iOS.
+  function startFromTap() {
+    sfx.unlock();
+    startRound();
+  }
+
+  // ---------- Offline readiness ----------
+
+  function isStandalone() {
+    return window.navigator.standalone === true ||
+      (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  }
+
+  function offlineStatus() {
+    const sw = navigator.serviceWorker;
+    if (!window.isSecureContext || !sw) return Promise.resolve({ state: 'unsupported' });
+    if (!sw.controller) return Promise.resolve({ state: 'saving' });
+    return new Promise((resolve) => {
+      const channel = new MessageChannel();
+      const timer = setTimeout(() => resolve({ state: 'unknown' }), 1500);
+      channel.port1.onmessage = (event) => {
+        clearTimeout(timer);
+        const data = event.data || {};
+        resolve({ state: data.saved >= data.total ? 'ready' : 'saving', saved: data.saved, total: data.total, version: data.version });
+      };
+      sw.controller.postMessage({ type: 'status' }, [channel.port2]);
+    });
+  }
+
+  let readyTimer = 0;
+  async function refreshReady() {
+    clearTimeout(readyTimer);
+    const status = await offlineStatus();
+    const line = $('ready');
+    line.className = 'ready' + (status.state === 'ready' ? ' ok' : '');
+    if (status.state === 'ready') {
+      line.textContent = isStandalone() ? '✓ Ready to play offline' : '✓ Saved for offline. Add it to the Home Screen: Share → Add to Home Screen.';
+    } else if (status.state === 'saving') {
+      line.textContent = 'Saving for offline… keep this open while online.';
+    } else if (status.state === 'unsupported') {
+      line.textContent = 'Offline play isn’t available here.';
+    } else {
+      line.textContent = '';
+    }
+    if (status.state !== 'ready' && !$('start').hidden) readyTimer = setTimeout(refreshReady, 2000);
+  }
+
+  // ---------- Teacher settings ----------
+
+  async function openSettings() {
+    stopEverything();
+    game.roundId += 1;          // abandon any round in progress
+    game.phase = 'idle';
+    setTilesEnabled(false);
+    $('replay').disabled = true;
+    $('auto-repeat').checked = settings.autoRepeat;
+    showOverlay('settings');
+    const status = await offlineStatus();
+    const rows = [
+      ['Version', status.version || 'unknown'],
+      ['Saved for offline', status.saved !== undefined ? status.saved + ' of ' + status.total + ' files' : status.state],
+      ['Opened from Home Screen', isStandalone() ? 'Yes' : 'No, in Safari'],
+      ['Connection', navigator.onLine ? 'Online' : 'Offline'],
+    ];
+    $('status-list').innerHTML = '';
+    rows.forEach(([label, value]) => {
+      const li = document.createElement('li');
+      const a = document.createElement('span');
+      const b = document.createElement('span');
+      a.textContent = label;
+      b.textContent = value;
+      li.append(a, b);
+      $('status-list').appendChild(li);
+    });
+  }
+
+  function closeSettings() {
+    setPrompt(game.total ? 'Paused' : 'Ready?');
+    $('start-btn').textContent = game.total ? 'Continue' : 'Start';
+    showOverlay('start');
+  }
+
+  function buildCredits() {
+    const list = $('credits');
+    COUNTRIES.forEach((country) => {
+      const li = document.createElement('li');
+      li.textContent = country.name + ' (“' + country.greeting + '”): ' + country.credit;
+      list.appendChild(li);
+    });
+    const flags = document.createElement('li');
+    flags.textContent = 'Flag images: flag-icons by Panayiotis Lipiridis, MIT License';
+    list.appendChild(flags);
+  }
+
+  let holdTimer = 0;
+  const gear = $('gear');
+  gear.addEventListener('pointerdown', () => {
+    gear.classList.add('holding');
+    holdTimer = setTimeout(() => { gear.classList.remove('holding'); openSettings(); }, 1000);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((type) => gear.addEventListener(type, () => {
+    clearTimeout(holdTimer);
+    gear.classList.remove('holding');
+  }));
+  gear.addEventListener('contextmenu', (event) => event.preventDefault());
+
+  $('auto-repeat').addEventListener('change', (event) => {
+    settings.autoRepeat = event.target.checked;
+    store.set('autoRepeat', settings.autoRepeat ? 'on' : 'off');
+  });
+  $('new-game').addEventListener('click', () => { newGame(); closeSettings(); });
+  $('close-settings').addEventListener('click', closeSettings);
 
   // ---------- Start ----------
 
-  $('version').textContent = (SINGLE_FILE ? 'Single-file copy' : 'Installable web app') + ' · ' + VERSION;
-  buildFlags();
-  render();
-  window.addEventListener('online', refresh);
-  window.addEventListener('offline', refresh);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && !SINGLE_FILE) refresh(); });
-  if (!SINGLE_FILE) setupOffline();
+  $('start-btn').addEventListener('click', startFromTap);
+  $('again-btn').addEventListener('click', () => { newGame(); startFromTap(); });
+  $('listen-btn').addEventListener('click', () => {
+    if (game.phase !== 'blocked') return;
+    sfx.unlock();
+    showOverlay(null);
+    listen(game.round.id);
+  });
+  $('replay').addEventListener('click', replay);
+
+  buildTiles();
+  buildCredits();
+  showTotal(false);
+  fitTiles();
+  window.addEventListener('resize', fitTiles);
+  window.addEventListener('orientationchange', () => setTimeout(fitTiles, 300));
+  showOverlay('start');
+
+  if (window.isSecureContext && navigator.serviceWorker) {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* offline relaunch: the active copy still works */ });
+    navigator.serviceWorker.addEventListener('controllerchange', refreshReady);
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  }
 })();
